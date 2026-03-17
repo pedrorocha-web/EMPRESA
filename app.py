@@ -10,9 +10,9 @@ import json
 
 # --- CONFIGURAÇÃO ---
 fuso_br = pytz.timezone('America/Sao_Paulo')
-st.set_page_config(page_title="Logística Pro", layout="wide")
+st.set_page_config(page_title="Logística Pro", layout="centered")
 
-# URL da ponte que você gerou no Apps Script
+# URL da sua ponte Apps Script
 URL_PONTE = "https://script.google.com/macros/s/AKfycbxzrb0qWWT3Kh88qrXp7g7xnVZptqwNhc802RWpglqEn4Qc1bQonhg5npayqwVk7sWG/exec"
 
 # IDs DE ACESSO
@@ -85,33 +85,45 @@ else:
         except Exception as e:
             st.error(f"Erro ao acessar dados: {e}")
 
-    # --- TELA DO MOTORISTA ---
+    # --- TELA DO MOTORISTA (LISTA VERTICAL) ---
     else:
-        st.title("🚛 Cadastro de Relatório")
+        st.title("🚛 Cadastro de Viagem")
+        st.write("Preencha as informações abaixo:")
         
         with st.form("form_viagem", clear_on_submit=True):
-            data_v = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
-            cliente = st.text_input("Nome do Cliente")
+            # CAMPOS EM LISTA (UM EMBAIXO DO OUTRO)
+            data_v = st.date_input("📅 Data da Viagem", value=datetime.now(fuso_br))
             
-            col1, col2 = st.columns(2)
-            origem = col1.text_input("Cidade Origem")
-            destino = col2.text_input("Cidade Destino")
-            km_i = col1.number_input("KM Inicial", min_value=0, value=None)
-            km_f = col2.number_input("KM Final", min_value=0, value=None)
+            cliente = st.text_input("👤 Nome do Cliente")
             
-            litros = col1.number_input("Litros", min_value=0.0, format="%.1f", value=None)
-            v_litro = col2.number_input("Valor Litro (R$)", min_value=0.0, format="%.2f", value=None)
-            g_mot = col1.number_input("Gastos Motorista", min_value=0.0, value=None)
-            g_cam = col2.number_input("Gastos Caminhão", min_value=0.0, value=None)
+            origem = st.text_input("📍 Cidade Origem")
             
-            obs = st.text_area("Observações")
+            destino = st.text_input("🏁 Cidade Destino")
             
-            if st.form_submit_button("🚀 ENVIAR RELATÓRIO"):
-                # Tratamento para campos não obrigatórios
-                v_km_i = km_i if km_i else 0
-                v_km_f = km_f if km_f else 0
-                v_litros = litros if litros else 0.0
-                v_v_litro = v_litro if v_litro else 0.0
+            km_i = st.number_input("🔢 KM Inicial", min_value=0, value=None, step=1)
+            
+            km_f = st.number_input("🔢 KM Final", min_value=0, value=None, step=1)
+            
+            litros = st.number_input("⛽ Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
+            
+            v_litro = st.number_input("💰 Valor do Litro (R$)", min_value=0.0, value=None, format="%.2f")
+            
+            g_mot = st.number_input("🍔 Gastos Motorista (Alimentação/etc)", min_value=0.0, value=None)
+            
+            g_cam = st.number_input("🛠️ Gastos Caminhão (Peças/Manutenção)", min_value=0.0, value=None)
+            
+            obs = st.text_area("📝 Observações Gerais")
+            
+            st.markdown("---")
+            
+            enviar = st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO")
+            
+            if enviar:
+                # Tratamento para campos não preenchidos
+                v_km_i = km_i if km_i is not None else 0
+                v_km_f = km_f if km_f is not None else 0
+                v_litros = litros if litros is not None else 0.0
+                v_v_litro = v_litro if v_litro is not None else 0.0
                 total_abast = round(v_litros * v_v_litro, 2)
                 
                 payload = {
@@ -131,12 +143,11 @@ else:
                 }
                 
                 try:
-                    # Envia os dados para a URL do Apps Script
                     res = requests.post(URL_PONTE, data=json.dumps(payload))
                     if res.status_code == 200:
-                        st.success("✅ Enviado com sucesso!")
+                        st.success("✅ Relatório enviado com sucesso!")
                         st.balloons()
                     else:
-                        st.error("Falha no servidor de destino.")
+                        st.error("Erro ao salvar. Verifique a conexão.")
                 except Exception as e:
                     st.error(f"Erro de conexão: {e}")
