@@ -89,24 +89,25 @@ else:
             
             st.subheader("🏁 Quilometragem")
             col3, col4 = st.columns(2)
-            km_ini = col3.number_input("KM Inicial", min_value=0, step=1)
-            km_fim = col4.number_input("KM Final", min_value=0, step=1)
+            km_ini = col3.number_input("KM Inicial", min_value=0, value=0, step=1)
+            km_fim = col4.number_input("KM Final", min_value=0, value=0, step=1)
             
             st.divider()
             st.subheader("⛽ Detalhes do Abastecimento")
             col5, col6 = st.columns(2)
-            litros = col5.number_input("Quantidade de Litros", min_value=0.0, step=0.1)
-            v_litro = col6.number_input("Valor do Litro (R$)", min_value=0.0, step=0.01)
+            # Campo de litros iniciando apenas com 0.0
+            litros = col5.number_input("Quantidade de Litros", min_value=0.0, value=0.0, step=0.1, format="%.1f")
+            # Campo de valor do litro configurado para modelo x.xx
+            v_litro = col6.number_input("Valor do Litro (R$ x.xx)", min_value=0.0, value=0.0, step=0.01, format="%.2f")
             
-            # Cálculo em tempo real (exibido após o envio ou via lógica interna)
             total_abastecimento = litros * v_litro
-            st.markdown(f"**Cálculo Estimado de Abastecimento: R$ {total_abastecimento:,.2f}**")
+            st.markdown(f"**Cálculo Automático de Abastecimento: R$ {total_abastecimento:,.2f}**")
             
             st.divider()
             st.subheader("💰 Gastos Adicionais")
             col7, col8 = st.columns(2)
-            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, step=0.01)
-            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, step=0.01)
+            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, value=0.0, step=0.01, format="%.2f")
+            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, value=0.0, step=0.01, format="%.2f")
             
             obs = st.text_area("Observações Gerais")
             
@@ -130,5 +131,5 @@ else:
                 }
                 
                 st.session_state.banco_dados.append(relatorio)
-                st.success(f"Relatório de R$ {total_abastecimento:.2f} enviado com sucesso!")
+                st.success(f"Relatório enviado com sucesso! Total Abastecimento: R$ {total_abastecimento:.2f}")
                 st.balloons()
