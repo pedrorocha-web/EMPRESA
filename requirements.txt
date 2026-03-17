@@ -4,3 +4,4 @@ fpdf
 openpyxl
 st-gsheets-connection
 pytz
+requests
