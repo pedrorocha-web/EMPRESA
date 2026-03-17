@@ -125,3 +125,37 @@ else:
                 agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
                 
                 novo_relatorio = {
+                    "Data da Viagem": data_v.strftime("%d/%m/%Y"),
+                    "Cliente": str(cliente),
+                    "Origem": str(origem),
+                    "Destino": str(destino),
+                    "KM Inicial": v_km_i,
+                    "KM Final": v_km_f,
+                    "KM Rodado": v_km_f - v_km_i,
+                    "Litros": v_litros,
+                    "Valor Unit. Litro": f"R$ {v_preco:.2f}",
+                    "Valor Total Abast.": f"R$ {total_abast:.2f}",
+                    "Gastos Motorista": f"R$ {v_g_mot:.2f}",
+                    "Gastos Caminhão": f"R$ {v_g_cam:.2f}",
+                    "Observações": str(obs),
+                    "Enviado em": agora
+                }
+                
+                try:
+                    # 1. Tenta ler o que já existe (Trata o erro HTTP aqui)
+                    try:
+                        df_atual = conn.read(ttl=0)
+                    except:
+                        df_atual = pd.DataFrame()
+
+                    # 2. Une os dados
+                    df_novo = pd.concat([df_atual, pd.DataFrame([novo_relatorio])], ignore_index=True)
+                    
+                    # 3. Salva de volta na planilha
+                    conn.update(data=df_novo)
+                    
+                    st.success("✅ Relatório enviado e salvo com sucesso!")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Erro ao salvar na nuvem: {e}")
+                    st.info("Dica: Verifique se a planilha está compartilhada como 'Editor' para 'Qualquer pessoa com o link'.")
