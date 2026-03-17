@@ -66,69 +66,69 @@ else:
             st.divider()
             c1, c2 = st.columns(2)
 
-            # Download EXCEL
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False)
             c1.download_button("📥 Baixar Planilha Geral (Excel)", data=buffer.getvalue(), file_name="relatorio_logistica.xlsx")
 
-            # Download PDF do último
             pdf_data = gerar_pdf(st.session_state.banco_dados[-1])
             c2.download_button("📄 Baixar Último Envio em PDF", data=pdf_data, file_name="comprovante_viagem.pdf")
 
-    # --- TELA DO MOTORISTA (FORMULÁRIO) ---
+    # --- TELA DO MOTORISTA (FORMULÁRIO COM CAMPOS VAZIOS) ---
     else:
         st.title("🚛 Cadastro de Relatório de Viagem")
         
         with st.form("form_viagem", clear_on_submit=True):
             st.subheader("📍 Trajeto e Cliente")
-            cliente = st.text_input("Nome do Cliente")
+            cliente = st.text_input("Nome do Cliente", value="")
             col1, col2 = st.columns(2)
-            origem = col1.text_input("Cidade Origem")
-            destino = col2.text_input("Cidade Destino")
+            origem = col1.text_input("Cidade Origem", value="")
+            destino = col2.text_input("Cidade Destino", value="")
             
             st.subheader("🏁 Quilometragem")
             col3, col4 = st.columns(2)
-            km_ini = col3.number_input("KM Inicial", min_value=0, step=1)
-            km_fim = col4.number_input("KM Final", min_value=0, step=1)
+            # value=None deixa o campo vazio para preenchimento
+            km_ini = col3.number_input("KM Inicial", min_value=0, step=1, value=None)
+            km_fim = col4.number_input("KM Final", min_value=0, step=1, value=None)
             
             st.divider()
             st.subheader("⛽ Detalhes do Abastecimento")
             col5, col6 = st.columns(2)
-            litros = col5.number_input("Quantidade de Litros", min_value=0.0, step=0.1)
-            v_litro = col6.number_input("Valor do Litro (R$)", min_value=0.0, step=0.01)
-            
-            # Cálculo em tempo real (exibido após o envio ou via lógica interna)
-            total_abastecimento = litros * v_litro
-            st.markdown(f"**Cálculo Estimado de Abastecimento: R$ {total_abastecimento:,.2f}**")
+            litros = col5.number_input("Quantidade de Litros", min_value=0.0, step=0.1, format="%.1f", value=None)
+            v_litro = col6.number_input("Valor do Litro (R$ x.xx)", min_value=0.0, step=0.01, format="%.2f", value=None)
             
             st.divider()
             st.subheader("💰 Gastos Adicionais")
             col7, col8 = st.columns(2)
-            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, step=0.01)
-            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, step=0.01)
+            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, step=0.01, format="%.2f", value=None)
+            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, step=0.01, format="%.2f", value=None)
             
-            obs = st.text_area("Observações Gerais")
+            obs = st.text_area("Observações Gerais", value="")
             
             if st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO"):
-                agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                
-                relatorio = {
-                    "Data/Hora": agora,
-                    "Cliente": cliente,
-                    "Origem": origem,
-                    "Destino": destino,
-                    "KM Inicial": km_ini,
-                    "KM Final": km_fim,
-                    "KM Rodado": km_fim - km_ini,
-                    "Litros": litros,
-                    "Valor Unit. Litro": f"R$ {v_litro:.2f}",
-                    "Valor Total Abast.": f"R$ {total_abastecimento:.2f}",
-                    "Gastos Motorista": f"R$ {g_mot:.2f}",
-                    "Gastos Caminhão": f"R$ {g_cam:.2f}",
-                    "Observações": obs
-                }
-                
-                st.session_state.banco_dados.append(relatorio)
-                st.success(f"Relatório de R$ {total_abastecimento:.2f} enviado com sucesso!")
-                st.balloons()
+                # Validação simples para evitar envio de campos vazios críticos
+                if None in [km_ini, km_fim, litros, v_litro]:
+                    st.error("Por favor, preencha todos os campos numéricos (KM e Abastecimento).")
+                else:
+                    agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+                    total_abast = litros * v_litro
+                    
+                    relatorio = {
+                        "Data/Hora": agora,
+                        "Cliente": cliente,
+                        "Origem": origem,
+                        "Destino": destino,
+                        "KM Inicial": km_ini,
+                        "KM Final": km_fim,
+                        "KM Rodado": km_fim - km_ini,
+                        "Litros": litros,
+                        "Valor Unit. Litro": f"R$ {v_litro:.2f}",
+                        "Valor Total Abast.": f"R$ {total_abast:.2f}",
+                        "Gastos Motorista": f"R$ {g_mot if g_mot else 0:.2f}",
+                        "Gastos Caminhão": f"R$ {g_cam if g_cam else 0:.2f}",
+                        "Observações": obs
+                    }
+                    
+                    st.session_state.banco_dados.append(relatorio)
+                    st.success("Relatório enviado com sucesso!")
+                    st.balloons()
