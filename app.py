@@ -19,7 +19,7 @@ URL_PONTE = "https://script.google.com/macros/s/AKfycbxzrb0qWWT3Kh88qrXp7g7xnVZp
 ID_DONO = "62322332399"
 ID_MOTORISTA = "76565874204"
 
-# --- CONEXÃO PARA LEITURA ---
+# --- CONEXÃO ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except:
@@ -75,30 +75,31 @@ else:
                 pdf_data = gerar_pdf(df.iloc[-1].to_dict())
                 c2.download_button("📄 Baixar PDF do Último Envio", data=pdf_data, file_name="comprovante.pdf")
             else:
-                st.info("Nenhum dado encontrado na planilha.")
+                st.info("Nenhum dado encontrado.")
         except Exception as e:
             st.error(f"Erro ao acessar dados: {e}")
 
-    # --- TELA DO MOTORISTA (LISTA VERTICAL COM GASTOS TEXTUAIS) ---
+    # --- TELA DO MOTORISTA (USANDO TEXT_AREA PARA EVITAR ENVIO PELO ENTER) ---
     else:
         st.title("🚛 Cadastro de Viagem")
-        st.write("Preencha as informações abaixo:")
+        st.info("💡 Use o 'Enter' para pular linha nos campos de texto. O envio só ocorre no botão ao final.")
         
         with st.form("form_viagem", clear_on_submit=True):
             data_v = st.date_input("📅 Data da Viagem", value=datetime.now(fuso_br))
             cliente = st.text_input("👤 Nome do Cliente")
             origem = st.text_input("📍 Cidade Origem")
             destino = st.text_input("🏁 Cidade Destino")
+            
+            # Números continuam Number Input (Enter aqui pula para o próximo campo)
             km_i = st.number_input("🔢 KM Inicial", min_value=0, value=None, step=1)
             km_f = st.number_input("🔢 KM Final", min_value=0, value=None, step=1)
             litros = st.number_input("⛽ Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
             v_litro = st.number_input("💰 Valor do Litro (R$)", min_value=0.0, value=None, format="%.2f")
             
-            # --- CAMPOS ALTERADOS PARA TEXTO (ACEITAM NÚMEROS E PALAVRAS) ---
-            g_mot = st.text_input("🍔 Gastos Motorista (Ex: 50.00 ou Almoço)")
-            g_cam = st.text_input("🛠️ Gastos Caminhão (Ex: 200.00 ou Troca de óleo)")
-            
-            obs = st.text_area("📝 Observações Gerais")
+            # --- CAMPOS TEXT_AREA (ENTER NÃO ENVIA, APENAS PULA LINHA) ---
+            g_mot = st.text_area("🍔 Gastos Motorista (Pode escrever em lista)", height=100)
+            g_cam = st.text_area("🛠️ Gastos Caminhão (Pode escrever em lista)", height=100)
+            obs = st.text_area("📝 Observações Gerais", height=100)
             
             st.markdown("---")
             enviar = st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO")
@@ -120,9 +121,9 @@ else:
                     "km_rodado": v_km_f - v_km_i,
                     "litros": v_litros,
                     "total_abast": f"R$ {total_abast:.2f}",
-                    "g_mot": str(g_mot), # Enviado como texto
-                    "g_cam": str(g_cam), # Enviado como texto
-                    "obs": str(obs),
+                    "g_mot": str(g_mot).replace("\n", " | "), # Substitui quebras de linha por barra para caber na planilha
+                    "g_cam": str(g_cam).replace("\n", " | "),
+                    "obs": str(obs).replace("\n", " | "),
                     "enviado": datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
                 }
                 
