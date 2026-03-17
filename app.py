@@ -9,7 +9,7 @@ import io
 fuso_br = pytz.timezone('America/Sao_Paulo')
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Gestão Logística", layout="centered")
+st.set_page_config(page_title="Gestão Logística", layout="wide")
 
 # --- BANCO DE DADOS EM MEMÓRIA ---
 if 'banco_dados' not in st.session_state:
@@ -36,8 +36,8 @@ def gerar_pdf(dados):
 # --- LOGIN ---
 if not st.session_state.logado:
     st.title("🚚 Sistema de Logística")
-    user_input = st.text_input("Digite seu ID", type="password")
-    if st.button("Acessar"):
+    user_input = st.text_input("Digite seu ID de Acesso", type="password")
+    if st.button("Acessar Sistema"):
         if user_input in [ID_DONO, ID_MOTORISTA]:
             st.session_state.logado = True
             st.session_state.user_id = user_input
@@ -47,21 +47,21 @@ if not st.session_state.logado:
 
 else:
     # Barra lateral
-    st.sidebar.write(f"Usuário: {'Proprietário' if st.session_state.user_id == ID_DONO else 'Motorista'}")
+    st.sidebar.write(f"Sessão Ativa: **{'Proprietário' if st.session_state.user_id == ID_DONO else 'Motorista'}**")
     if st.sidebar.button("Encerrar Sessão"):
         st.session_state.logado = False
         st.rerun()
 
     # --- TELA DO DONO (DOWNLOADS) ---
     if st.session_state.user_id == ID_DONO:
-        st.title("📊 Painel de Controle")
+        st.title("📊 Painel de Controle Administrativo")
         
         if not st.session_state.banco_dados:
-            st.info("Aguardando novos envios de relatórios...")
+            st.info("Nenhum relatório enviado nesta sessão.")
         else:
             df = pd.DataFrame(st.session_state.banco_dados)
-            st.write("### Relatórios na Sessão Atual")
-            st.dataframe(df)
+            st.write("### Registros Recebidos")
+            st.dataframe(df, use_container_width=True)
 
             st.divider()
             c1, c2 = st.columns(2)
@@ -70,42 +70,47 @@ else:
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False)
-            c1.download_button("📥 Baixar Planilha (Excel)", data=buffer.getvalue(), file_name="logistica_export.xlsx")
+            c1.download_button("📥 Baixar Planilha Geral (Excel)", data=buffer.getvalue(), file_name="relatorio_logistica.xlsx")
 
             # Download PDF do último
             pdf_data = gerar_pdf(st.session_state.banco_dados[-1])
-            c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="comprovante.pdf")
+            c2.download_button("📄 Baixar Último Envio em PDF", data=pdf_data, file_name="comprovante_viagem.pdf")
 
     # --- TELA DO MOTORISTA (FORMULÁRIO) ---
     else:
-        st.title("🚛 Cadastro de Viagem")
+        st.title("🚛 Cadastro de Relatório de Viagem")
         
         with st.form("form_viagem", clear_on_submit=True):
-            st.subheader("📍 Trajeto")
+            st.subheader("📍 Trajeto e Cliente")
+            cliente = st.text_input("Nome do Cliente")
             col1, col2 = st.columns(2)
             origem = col1.text_input("Cidade Origem")
             destino = col2.text_input("Cidade Destino")
             
             st.subheader("🏁 Quilometragem")
             col3, col4 = st.columns(2)
-            km_ini = col3.number_input("KM Inicial", min_value=0)
-            km_fim = col4.number_input("KM Final", min_value=0)
+            km_ini = col3.number_input("KM Inicial", min_value=0, step=1)
+            km_fim = col4.number_input("KM Final", min_value=0, step=1)
             
             st.divider()
-            st.subheader("⛽ Abastecimento")
+            st.subheader("⛽ Detalhes do Abastecimento")
             col5, col6 = st.columns(2)
-            litros = col5.number_input("Litros", min_value=0.0)
-            v_litro = col6.number_input("Valor do Litro (R$)", min_value=0.0)
+            litros = col5.number_input("Quantidade de Litros", min_value=0.0, step=0.1)
+            v_litro = col6.number_input("Valor do Litro (R$)", min_value=0.0, step=0.01)
+            
+            # Cálculo em tempo real (exibido após o envio ou via lógica interna)
+            total_abastecimento = litros * v_litro
+            st.markdown(f"**Cálculo Estimado de Abastecimento: R$ {total_abastecimento:,.2f}**")
             
             st.divider()
-            st.subheader("💰 Gastos Diversos")
-            g_mot = st.number_input("Gastos Motorista (Alimentação/Outros)", min_value=0.0)
-            g_cam = st.number_input("Gastos Caminhão (Manutenção/Outros)", min_value=0.0)
+            st.subheader("💰 Gastos Adicionais")
+            col7, col8 = st.columns(2)
+            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, step=0.01)
+            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, step=0.01)
             
-            cliente = st.text_input("Cliente")
-            obs = st.text_area("Observações Adicionais")
+            obs = st.text_area("Observações Gerais")
             
-            if st.form_submit_button("🚀 ENVIAR RELATÓRIO"):
+            if st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO"):
                 agora = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
                 
                 relatorio = {
@@ -115,15 +120,15 @@ else:
                     "Destino": destino,
                     "KM Inicial": km_ini,
                     "KM Final": km_fim,
-                    "Total KM": km_fim - km_ini,
+                    "KM Rodado": km_fim - km_ini,
                     "Litros": litros,
-                    "Vlr Litro": v_litro,
-                    "Total Abast.": litros * v_litro,
-                    "Gastos Motorista": g_mot,
-                    "Gastos Caminhão": g_cam,
-                    "Obs": obs
+                    "Valor Unit. Litro": f"R$ {v_litro:.2f}",
+                    "Valor Total Abast.": f"R$ {total_abastecimento:.2f}",
+                    "Gastos Motorista": f"R$ {g_mot:.2f}",
+                    "Gastos Caminhão": f"R$ {g_cam:.2f}",
+                    "Observações": obs
                 }
                 
                 st.session_state.banco_dados.append(relatorio)
-                st.success("Enviado com sucesso! Avise ao administrador para baixar os dados.")
+                st.success(f"Relatório de R$ {total_abastecimento:.2f} enviado com sucesso!")
                 st.balloons()
