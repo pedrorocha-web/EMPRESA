@@ -10,7 +10,7 @@ import io
 fuso_br = pytz.timezone('America/Sao_Paulo')
 st.set_page_config(page_title="Logística Pro", layout="centered")
 
-# Estilo App (Esconde menus para parecer nativo no celular)
+# Visual estilo App (Remoção de brechas visuais e menus)
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -21,7 +21,11 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- CONEXÃO ---
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Criamos a conexão com tratamento de erro robusto
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
+except Exception as e:
+    st.error("Erro na conexão com o Banco de Dados. Verifique os Secrets.")
 
 ID_DONO = "62322332399"
 ID_MOTORISTA = "76565874204"
@@ -34,7 +38,7 @@ def gerar_pdf(dados):
     pdf.ln(10)
     pdf.set_font("Arial", size=10)
     for key, value in dados.items():
-        pdf.cell(200, 8, txt=f"{key}: {value}", ln=True)
+        pdf.cell(200, 8, txt=f"{key}: {str(value)}", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 # --- LOGIN ---
@@ -57,13 +61,21 @@ else:
         st.session_state.logado = False
         st.rerun()
 
-    # --- TELA DO DONO ---
+    # --- TELA DO DONO (CORREÇÃO DE CACHE) ---
     if st.session_state.user_id == ID_DONO:
         st.title("📊 Painel Administrativo")
+        # Botão para forçar atualização manual se necessário
+        if st.button("🔄 Atualizar Dados"):
+            st.cache_data.clear()
+            st.rerun()
+
         try:
-            df = conn.read(ttl=0)
+            df = conn.read(ttl=0) # ttl=0 evita cache persistente
             if df is not None and not df.empty:
-                st.dataframe(df)
+                # Remove colunas fantasmas que o Sheets cria
+                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+                st.dataframe(df, use_container_width=True)
+                
                 st.divider()
                 c1, c2 = st.columns(2)
                 
@@ -75,76 +87,77 @@ else:
                 pdf_data = gerar_pdf(df.iloc[-1].to_dict())
                 c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="ultimo_envio.pdf")
             else:
-                st.info("Nenhum dado salvo na planilha.")
+                st.info("Planilha vazia ou aguardando dados.")
         except Exception as e:
-            st.error(f"Erro ao acessar dados: {e}")
+            st.error(f"Erro ao ler planilha: {e}")
 
-    # --- TELA DO MOTORISTA ---
+    # --- TELA DO MOTORISTA (CORREÇÃO DE ENVIO) ---
     else:
         st.title("🚛 Novo Relatório")
         with st.form("form_viagem", clear_on_submit=True):
-            st.subheader("📅 Data e Cliente")
+            st.subheader("📅 Dados Gerais")
             data_v = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
-            cliente = st.text_input("Nome do Cliente", value="")
+            cliente = st.text_input("Nome do Cliente")
+            origem = st.text_input("Cidade Origem")
+            destino = st.text_input("Cidade Destino")
             
-            st.subheader("📍 Trajeto")
+            st.subheader("🏁 KM e Abastecimento")
             col1, col2 = st.columns(2)
-            origem = col1.text_input("Cidade Origem", value="")
-            destino = col2.text_input("Cidade Destino", value="")
-            
-            st.subheader("🏁 Quilometragem")
             km_i = col1.number_input("KM Inicial", min_value=0, step=1, value=None)
             km_f = col2.number_input("KM Final", min_value=0, step=1, value=None)
+            litros = col1.number_input("Litros", min_value=0.0, step=0.1, value=None)
+            v_litro = col2.number_input("Valor Litro (R$)", min_value=0.0, step=0.01, value=None)
             
-            st.divider()
-            st.subheader("⛽ Abastecimento")
-            litros = col1.number_input("Quantidade de Litros", min_value=0.0, step=0.1, format="%.1f", value=None)
-            v_litro = col2.number_input("Valor do Litro (R$)", min_value=0.0, step=0.01, format="%.2f", value=None)
+            st.subheader("💰 Gastos Extras")
+            g_mot = col1.number_input("Gasto Motorista", min_value=0.0, value=None)
+            g_cam = col2.number_input("Gasto Caminhão", min_value=0.0, value=None)
             
-            st.divider()
-            st.subheader("💰 Gastos Adicionais")
-            g_mot = col1.number_input("Gastos Motorista", min_value=0.0, step=0.01, format="%.2f", value=None)
-            g_cam = col2.number_input("Gastos Caminhão", min_value=0.0, step=0.01, format="%.2f", value=None)
+            obs = st.text_area("Observações")
             
-            obs = st.text_area("Observações", value="")
+            enviar = st.form_submit_button("🚀 ENVIAR RELATÓRIO")
             
-            if st.form_submit_button("🚀 ENVIAR RELATÓRIO"):
-                # Captura data e hora do envio em Brasília
+            if enviar:
+                # Preenchimento de nulos para evitar quebra de concatenação
+                v_km_i = km_i if km_i else 0
+                v_km_f = km_f if km_f else 0
+                v_litros = litros if litros else 0.0
+                v_preco = v_litro if v_litro else 0.0
+                
+                total_abast = round(v_litros * v_preco, 2)
                 agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                
-                # Tratamento de valores vazios (para não dar erro no cálculo)
-                v_km_i = km_i if km_i is not None else 0
-                v_km_f = km_f if km_f is not None else 0
-                v_litros = litros if litros is not None else 0.0
-                v_preco = v_litro if v_litro is not None else 0.0
-                v_g_mot = g_mot if g_mot is not None else 0.0
-                v_g_cam = g_cam if g_cam is not None else 0.0
-                
-                total_abast = v_litros * v_preco
                 
                 novo_dado = {
                     "Data da Viagem": data_v.strftime("%d/%m/%Y"),
-                    "Cliente": cliente,
-                    "Origem": origem,
-                    "Destino": destino,
+                    "Cliente": str(cliente),
+                    "Origem": str(origem),
+                    "Destino": str(destino),
                     "KM Inicial": v_km_i,
                     "KM Final": v_km_f,
                     "KM Rodado": v_km_f - v_km_i,
                     "Litros": v_litros,
-                    "Valor Unit. Litro": f"R$ {v_preco:.2f}",
-                    "Valor Total Abast.": f"R$ {total_abast:.2f}",
-                    "Gastos Motorista": f"R$ {v_g_mot:.2f}",
-                    "Gastos Caminhão": f"R$ {v_g_cam:.2f}",
-                    "Observações": obs,
+                    "Valor Unit. Litro": v_preco,
+                    "Valor Total Abast.": total_abast,
+                    "Gastos Motorista": g_mot if g_mot else 0.0,
+                    "Gastos Caminhão": g_cam if g_cam else 0.0,
+                    "Observações": str(obs),
                     "Enviado em": agora_envio
                 }
                 
                 try:
-                    # Conecta e atualiza a planilha
-                    df_atual = conn.read(ttl=0)
-                    df_novo = pd.concat([df_atual, pd.DataFrame([novo_dado])], ignore_index=True)
-                    conn.update(data=df_novo)
-                    st.success("✅ Relatório enviado com sucesso!")
+                    # Lógica de atualização robusta
+                    # 1. Busca dados atuais
+                    df_existente = conn.read(ttl=0)
+                    # 2. Concatena (trata se a planilha estiver vazia)
+                    if df_existente is not None:
+                        df_final = pd.concat([df_existente, pd.DataFrame([novo_dado])], ignore_index=True)
+                    else:
+                        df_final = pd.DataFrame([novo_dado])
+                    
+                    # 3. Atualiza e limpa cache imediatamente
+                    conn.update(data=df_final)
+                    st.cache_data.clear() # BRECHA DE CACHE FECHADA
+                    
+                    st.success("✅ Relatório salvo com sucesso!")
                     st.balloons()
                 except Exception as e:
-                    st.error(f"Erro ao salvar na planilha: {e}")
+                    st.error(f"Erro crítico ao salvar: {e}. Verifique se a planilha está aberta ou protegida.")
