@@ -1,35 +1,27 @@
 import streamlit as st
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
 from fpdf import FPDF
 from datetime import datetime
 import pytz
 import io
 
-# --- CONFIGURAÇÃO ---
+# --- CONFIGURAÇÃO DE FUSO HORÁRIO (BRASÍLIA/BRASIL) ---
 fuso_br = pytz.timezone('America/Sao_Paulo')
-st.set_page_config(page_title="Logística Pro", layout="centered")
 
-# Visual estilo App (Remoção de brechas visuais e menus)
-st.markdown("""
-    <style>
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        header {visibility: hidden;}
-        .stApp { max-width: 100%; padding-top: 0rem; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(page_title="Gestão Logística", layout="wide")
 
-# --- CONEXÃO ---
-# Criamos a conexão com tratamento de erro robusto
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error("Erro na conexão com o Banco de Dados. Verifique os Secrets.")
+# --- BANCO DE DADOS EM MEMÓRIA ---
+if 'banco_dados' not in st.session_state:
+    st.session_state.banco_dados = []
+if 'logado' not in st.session_state:
+    st.session_state.logado = False
 
+# --- IDs DE ACESSO ---
 ID_DONO = "62322332399"
 ID_MOTORISTA = "76565874204"
 
+# --- FUNÇÃO PARA GERAR PDF ---
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
@@ -38,126 +30,110 @@ def gerar_pdf(dados):
     pdf.ln(10)
     pdf.set_font("Arial", size=10)
     for key, value in dados.items():
-        pdf.cell(200, 8, txt=f"{key}: {str(value)}", ln=True)
+        pdf.cell(200, 8, txt=f"{key}: {value}", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 # --- LOGIN ---
-if 'logado' not in st.session_state:
-    st.session_state.logado = False
-
 if not st.session_state.logado:
     st.title("🚚 Sistema de Logística")
-    user_input = st.text_input("ID de Acesso", type="password")
-    if st.button("Entrar"):
+    user_input = st.text_input("Digite o seu ID de Acesso", type="password")
+    if st.button("Aceder ao Sistema"):
         if user_input in [ID_DONO, ID_MOTORISTA]:
             st.session_state.logado = True
             st.session_state.user_id = user_input
             st.rerun()
         else:
-            st.error("ID Inválido")
+            st.error("ID não autorizado.")
 
 else:
-    if st.sidebar.button("Sair"):
+    # Barra lateral
+    st.sidebar.write(f"Sessão Ativa: **{'Proprietário' if st.session_state.user_id == ID_DONO else 'Motorista'}**")
+    if st.sidebar.button("Encerrar Sessão"):
         st.session_state.logado = False
         st.rerun()
 
-    # --- TELA DO DONO (CORREÇÃO DE CACHE) ---
+    # --- TELA DO DONO (DOWNLOADS) ---
     if st.session_state.user_id == ID_DONO:
-        st.title("📊 Painel Administrativo")
-        # Botão para forçar atualização manual se necessário
-        if st.button("🔄 Atualizar Dados"):
-            st.cache_data.clear()
-            st.rerun()
+        st.title("📊 Painel de Controlo Administrativo")
+        
+        if not st.session_state.banco_dados:
+            st.info("Nenhum relatório enviado nesta sessão.")
+        else:
+            df = pd.DataFrame(st.session_state.banco_dados)
+            st.write("### Registos Recebidos")
+            st.dataframe(df, use_container_width=True)
 
-        try:
-            df = conn.read(ttl=0) # ttl=0 evita cache persistente
-            if df is not None and not df.empty:
-                # Remove colunas fantasmas que o Sheets cria
-                df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
-                st.dataframe(df, use_container_width=True)
-                
-                st.divider()
-                c1, c2 = st.columns(2)
-                
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False)
-                c1.download_button("📥 Baixar Excel", data=buffer.getvalue(), file_name="relatorio_geral.xlsx")
-                
-                pdf_data = gerar_pdf(df.iloc[-1].to_dict())
-                c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="ultimo_envio.pdf")
-            else:
-                st.info("Planilha vazia ou aguardando dados.")
-        except Exception as e:
-            st.error(f"Erro ao ler planilha: {e}")
+            st.divider()
+            c1, c2 = st.columns(2)
 
-    # --- TELA DO MOTORISTA (CORREÇÃO DE ENVIO) ---
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            c1.download_button("📥 Baixar Planilha Geral (Excel)", data=buffer.getvalue(), file_name="relatorio_logistica.xlsx")
+
+            pdf_data = gerar_pdf(st.session_state.banco_dados[-1])
+            c2.download_button("📄 Baixar Último Envio em PDF", data=pdf_data, file_name="comprovante_viagem.pdf")
+
+    # --- TELA DO MOTORISTA ---
     else:
-        st.title("🚛 Novo Relatório")
+        st.title("🚛 Cadastro de Relatório de Viagem")
+        
         with st.form("form_viagem", clear_on_submit=True):
-            st.subheader("📅 Dados Gerais")
-            data_v = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
-            cliente = st.text_input("Nome do Cliente")
-            origem = st.text_input("Cidade Origem")
-            destino = st.text_input("Cidade Destino")
+            st.subheader("📅 Data e Cliente")
+            # Novo campo de data (padrão hoje, mas editável)
+            data_viagem = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
+            cliente = st.text_input("Nome do Cliente", value="")
             
-            st.subheader("🏁 KM e Abastecimento")
+            st.subheader("📍 Trajeto")
             col1, col2 = st.columns(2)
-            km_i = col1.number_input("KM Inicial", min_value=0, step=1, value=None)
-            km_f = col2.number_input("KM Final", min_value=0, step=1, value=None)
-            litros = col1.number_input("Litros", min_value=0.0, step=0.1, value=None)
-            v_litro = col2.number_input("Valor Litro (R$)", min_value=0.0, step=0.01, value=None)
+            origem = col1.text_input("Cidade Origem", value="")
+            destino = col2.text_input("Cidade Destino", value="")
             
-            st.subheader("💰 Gastos Extras")
-            g_mot = col1.number_input("Gasto Motorista", min_value=0.0, value=None)
-            g_cam = col2.number_input("Gasto Caminhão", min_value=0.0, value=None)
+            st.subheader("🏁 Quilometragem")
+            col3, col4 = st.columns(2)
+            km_ini = col3.number_input("KM Inicial", min_value=0, step=1, value=None)
+            km_fim = col4.number_input("KM Final", min_value=0, step=1, value=None)
             
-            obs = st.text_area("Observações")
+            st.divider()
+            st.subheader("⛽ Detalhes do Abastecimento")
+            col5, col6 = st.columns(2)
+            litros = col5.number_input("Quantidade de Litros", min_value=0.0, step=0.1, format="%.1f", value=None)
+            v_litro = col6.number_input("Valor do Litro (R$ x.xx)", min_value=0.0, step=0.01, format="%.2f", value=None)
             
-            enviar = st.form_submit_button("🚀 ENVIAR RELATÓRIO")
+            st.divider()
+            st.subheader("💰 Gastos Adicionais")
+            col7, col8 = st.columns(2)
+            g_mot = col7.number_input("Gastos Motorista (Alimentação/Hospedagem)", min_value=0.0, step=0.01, format="%.2f", value=None)
+            g_cam = col8.number_input("Gastos Caminhão (Peças/Manutenção)", min_value=0.0, step=0.01, format="%.2f", value=None)
             
-            if enviar:
-                # Preenchimento de nulos para evitar quebra de concatenação
-                v_km_i = km_i if km_i else 0
-                v_km_f = km_f if km_f else 0
-                v_litros = litros if litros else 0.0
-                v_preco = v_litro if v_litro else 0.0
-                
-                total_abast = round(v_litros * v_preco, 2)
-                agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                
-                novo_dado = {
-                    "Data da Viagem": data_v.strftime("%d/%m/%Y"),
-                    "Cliente": str(cliente),
-                    "Origem": str(origem),
-                    "Destino": str(destino),
-                    "KM Inicial": v_km_i,
-                    "KM Final": v_km_f,
-                    "KM Rodado": v_km_f - v_km_i,
-                    "Litros": v_litros,
-                    "Valor Unit. Litro": v_preco,
-                    "Valor Total Abast.": total_abast,
-                    "Gastos Motorista": g_mot if g_mot else 0.0,
-                    "Gastos Caminhão": g_cam if g_cam else 0.0,
-                    "Observações": str(obs),
-                    "Enviado em": agora_envio
-                }
-                
-                try:
-                    # Lógica de atualização robusta
-                    # 1. Busca dados atuais
-                    df_existente = conn.read(ttl=0)
-                    # 2. Concatena (trata se a planilha estiver vazia)
-                    if df_existente is not None:
-                        df_final = pd.concat([df_existente, pd.DataFrame([novo_dado])], ignore_index=True)
-                    else:
-                        df_final = pd.DataFrame([novo_dado])
+            obs = st.text_area("Observações Gerais", value="")
+            
+            if st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO"):
+                # Validação
+                if None in [km_ini, km_fim, litros, v_litro]:
+                    st.error("Por favor, preencha KM Inicial, KM Final, Litros e Valor do Litro.")
+                else:
+                    data_formatada = data_viagem.strftime("%d/%m/%Y")
+                    agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+                    total_abast = litros * v_litro
                     
-                    # 3. Atualiza e limpa cache imediatamente
-                    conn.update(data=df_final)
-                    st.cache_data.clear() # BRECHA DE CACHE FECHADA
+                    relatorio = {
+                        "Data da Viagem": data_formatada,
+                        "Cliente": cliente,
+                        "Origem": origem,
+                        "Destino": destino,
+                        "KM Inicial": km_ini,
+                        "KM Final": km_fim,
+                        "KM Rodado": km_fim - km_ini,
+                        "Litros": litros,
+                        "Valor Unit. Litro": f"R$ {v_litro:.2f}",
+                        "Valor Total Abast.": f"R$ {total_abast:.2f}",
+                        "Gastos Motorista": f"R$ {g_mot if g_mot else 0:.2f}",
+                        "Gastos Caminhão": f"R$ {g_cam if g_cam else 0:.2f}",
+                        "Observações": obs,
+                        "Enviado em": agora_envio
+                    }
                     
-                    st.success("✅ Relatório salvo com sucesso!")
+                    st.session_state.banco_dados.append(relatorio)
+                    st.success("Relatório enviado com sucesso!")
                     st.balloons()
-                except Exception as e:
-                    st.error(f"Erro crítico ao salvar: {e}. Verifique se a planilha está aberta ou protegida.")
