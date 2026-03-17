@@ -10,7 +10,7 @@ import io
 fuso_br = pytz.timezone('America/Sao_Paulo')
 st.set_page_config(page_title="Logística Pro", layout="centered")
 
-# Visual estilo App (Esconde menus do Streamlit)
+# Estilo App (Esconde menus para parecer nativo no celular)
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -83,54 +83,68 @@ else:
     else:
         st.title("🚛 Novo Relatório")
         with st.form("form_viagem", clear_on_submit=True):
+            st.subheader("📅 Data e Cliente")
             data_v = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
-            cliente = st.text_input("Nome do Cliente")
+            cliente = st.text_input("Nome do Cliente", value="")
             
+            st.subheader("📍 Trajeto")
             col1, col2 = st.columns(2)
-            origem = col1.text_input("Cidade Origem")
-            destino = col2.text_input("Cidade Destino")
+            origem = col1.text_input("Cidade Origem", value="")
+            destino = col2.text_input("Cidade Destino", value="")
             
-            km_i = col1.number_input("KM Inicial", min_value=0, value=None)
-            km_f = col2.number_input("KM Final", min_value=0, value=None)
+            st.subheader("🏁 Quilometragem")
+            km_i = col1.number_input("KM Inicial", min_value=0, step=1, value=None)
+            km_f = col2.number_input("KM Final", min_value=0, step=1, value=None)
             
-            litros = col1.number_input("Litros", min_value=0.0, format="%.1f", value=None)
-            v_litro = col2.number_input("Valor Litro (R$)", min_value=0.0, format="%.2f", value=None)
+            st.divider()
+            st.subheader("⛽ Abastecimento")
+            litros = col1.number_input("Quantidade de Litros", min_value=0.0, step=0.1, format="%.1f", value=None)
+            v_litro = col2.number_input("Valor do Litro (R$)", min_value=0.0, step=0.01, format="%.2f", value=None)
             
-            g_mot = col1.number_input("Gasto Motorista", min_value=0.0, format="%.2f", value=None)
-            g_cam = col2.number_input("Gasto Caminhão", min_value=0.0, format="%.2f", value=None)
+            st.divider()
+            st.subheader("💰 Gastos Adicionais")
+            g_mot = col1.number_input("Gastos Motorista", min_value=0.0, step=0.01, format="%.2f", value=None)
+            g_cam = col2.number_input("Gastos Caminhão", min_value=0.0, step=0.01, format="%.2f", value=None)
             
-            obs = st.text_area("Observações")
+            obs = st.text_area("Observações", value="")
             
             if st.form_submit_button("🚀 ENVIAR RELATÓRIO"):
-                if None in [km_i, km_f, litros, v_litro]:
-                    st.error("Por favor, preencha os campos de KM e Abastecimento.")
-                else:
-                    agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                    total_abast = litros * v_litro
-                    
-                    novo_dado = {
-                        "Data da Viagem": data_v.strftime("%d/%m/%Y"),
-                        "Cliente": cliente,
-                        "Origem": origem,
-                        "Destino": destino,
-                        "KM Inicial": km_i,
-                        "KM Final": km_f,
-                        "KM Rodado": km_f - km_i,
-                        "Litros": litros,
-                        "Valor Unit. Litro": f"{v_litro:.2f}",
-                        "Valor Total Abast.": f"{total_abast:.2f}",
-                        "Gastos Motorista": f"{g_mot if g_mot else 0:.2f}",
-                        "Gastos Caminhão": f"{g_cam if g_cam else 0:.2f}",
-                        "Observações": obs,
-                        "Enviado em": agora_envio
-                    }
-                    
-                    try:
-                        # Lê o atual, junta com o novo e salva
-                        df_atual = conn.read(ttl=0)
-                        df_novo = pd.concat([df_atual, pd.DataFrame([novo_dado])], ignore_index=True)
-                        conn.update(data=df_novo)
-                        st.success("✅ Relatório salvo com sucesso!")
-                        st.balloons()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar na planilha: {e}")
+                # Captura data e hora do envio em Brasília
+                agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+                
+                # Tratamento de valores vazios (para não dar erro no cálculo)
+                v_km_i = km_i if km_i is not None else 0
+                v_km_f = km_f if km_f is not None else 0
+                v_litros = litros if litros is not None else 0.0
+                v_preco = v_litro if v_litro is not None else 0.0
+                v_g_mot = g_mot if g_mot is not None else 0.0
+                v_g_cam = g_cam if g_cam is not None else 0.0
+                
+                total_abast = v_litros * v_preco
+                
+                novo_dado = {
+                    "Data da Viagem": data_v.strftime("%d/%m/%Y"),
+                    "Cliente": cliente,
+                    "Origem": origem,
+                    "Destino": destino,
+                    "KM Inicial": v_km_i,
+                    "KM Final": v_km_f,
+                    "KM Rodado": v_km_f - v_km_i,
+                    "Litros": v_litros,
+                    "Valor Unit. Litro": f"R$ {v_preco:.2f}",
+                    "Valor Total Abast.": f"R$ {total_abast:.2f}",
+                    "Gastos Motorista": f"R$ {v_g_mot:.2f}",
+                    "Gastos Caminhão": f"R$ {v_g_cam:.2f}",
+                    "Observações": obs,
+                    "Enviado em": agora_envio
+                }
+                
+                try:
+                    # Conecta e atualiza a planilha
+                    df_atual = conn.read(ttl=0)
+                    df_novo = pd.concat([df_atual, pd.DataFrame([novo_dado])], ignore_index=True)
+                    conn.update(data=df_novo)
+                    st.success("✅ Relatório enviado com sucesso!")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Erro ao salvar na planilha: {e}")
