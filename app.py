@@ -80,7 +80,6 @@ else:
         
         with st.form("form_viagem", clear_on_submit=True):
             st.subheader("📅 Data e Cliente")
-            # Novo campo de data (padrão hoje, mas editável)
             data_viagem = st.date_input("Data da Viagem", value=datetime.now(fuso_br))
             cliente = st.text_input("Nome do Cliente", value="")
             
@@ -109,31 +108,33 @@ else:
             obs = st.text_area("Observações Gerais", value="")
             
             if st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO"):
-                # Validação
-                if None in [km_ini, km_fim, litros, v_litro]:
-                    st.error("Por favor, preencha KM Inicial, KM Final, Litros e Valor do Litro.")
-                else:
-                    data_formatada = data_viagem.strftime("%d/%m/%Y")
-                    agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
-                    total_abast = litros * v_litro
-                    
-                    relatorio = {
-                        "Data da Viagem": data_formatada,
-                        "Cliente": cliente,
-                        "Origem": origem,
-                        "Destino": destino,
-                        "KM Inicial": km_ini,
-                        "KM Final": km_fim,
-                        "KM Rodado": km_fim - km_ini,
-                        "Litros": litros,
-                        "Valor Unit. Litro": f"R$ {v_litro:.2f}",
-                        "Valor Total Abast.": f"R$ {total_abast:.2f}",
-                        "Gastos Motorista": f"R$ {g_mot if g_mot else 0:.2f}",
-                        "Gastos Caminhão": f"R$ {g_cam if g_cam else 0:.2f}",
-                        "Observações": obs,
-                        "Enviado em": agora_envio
-                    }
-                    
-                    st.session_state.banco_dados.append(relatorio)
-                    st.success("Relatório enviado com sucesso!")
-                    st.balloons()
+                # Tratamento de valores para campos não preenchidos
+                v_km_ini = km_ini if km_ini is not None else 0
+                v_km_fim = km_fim if km_fim is not None else 0
+                v_litros = litros if litros is not None else 0.0
+                v_v_litro = v_litro if v_litro is not None else 0.0
+                
+                data_formatada = data_viagem.strftime("%d/%m/%Y")
+                agora_envio = datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
+                total_abast = v_litros * v_v_litro
+                
+                relatorio = {
+                    "Data da Viagem": data_formatada,
+                    "Cliente": cliente,
+                    "Origem": origem,
+                    "Destino": destino,
+                    "KM Inicial": v_km_ini,
+                    "KM Final": v_km_fim,
+                    "KM Rodado": v_km_fim - v_km_ini,
+                    "Litros": v_litros,
+                    "Valor Unit. Litro": f"R$ {v_v_litro:.2f}",
+                    "Valor Total Abast.": f"R$ {total_abast:.2f}",
+                    "Gastos Motorista": f"R$ {g_mot if g_mot else 0.0:.2f}",
+                    "Gastos Caminhão": f"R$ {g_cam if g_cam else 0.0:.2f}",
+                    "Observações": obs,
+                    "Enviado em": agora_envio
+                }
+                
+                st.session_state.banco_dados.append(relatorio)
+                st.success("Relatório enviado com sucesso!")
+                st.balloons()
