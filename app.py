@@ -83,29 +83,28 @@ else:
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
 
-    # --- TELA DO MOTORISTA (LISTA VERTICAL ATUALIZADA) ---
+    # --- TELA DO MOTORISTA (EVITANDO ENVIO PELO ENTER) ---
     else:
         st.title("🚛 Cadastro de Viagem")
-        st.write("Preencha as informações abaixo:")
+        st.info("💡 Use 'Enter' para pular linha nos campos de texto. O envio só ocorre no botão final.")
         
         with st.form("form_viagem", clear_on_submit=True):
             data_v = st.date_input("📅 Data da Viagem", value=datetime.now(fuso_br))
+            
+            # Campos de texto curto (Enter pula para o próximo campo)
             cliente = st.text_input("👤 Nome do Cliente")
             origem = st.text_input("📍 Cidade Origem")
             destino = st.text_input("🏁 Cidade Destino")
             
-            # Campo de Distância (Substituiu KM Inicial e Final)
+            # Campos Numéricos
             distancia = st.number_input("📏 Distância Total da Viagem (KM)", min_value=0, value=None, step=1)
-            
-            # Novo Campo de Frete
             v_frete = st.number_input("💰 Valor do Frete (R$)", min_value=0.0, value=None, format="%.2f")
-            
             litros = st.number_input("⛽ Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
             v_litro = st.number_input("💵 Preço por Litro (R$)", min_value=0.0, value=None, format="%.2f")
             
-            # Campos que aceitam Enter para pular linha
-            g_mot = st.text_area("🍔 Gastos Motorista (Detalhado)", height=100)
-            g_cam = st.text_area("🛠️ Gastos Caminhão (Detalhado)", height=100)
+            # --- CAMPOS TEXT_AREA (ENTER PULA LINHA E NÃO ENVIA) ---
+            g_mot = st.text_area("🍔 Gastos Motorista (Detalhado)", height=100, placeholder="Ex: \n- Almoço: 35,00\n- Janta: 40,00")
+            g_cam = st.text_area("🛠️ Gastos Caminhão (Detalhado)", height=100, placeholder="Ex: \n- Pneu furado: 120,00")
             obs = st.text_area("📝 Observações Gerais", height=100)
             
             st.markdown("---")
@@ -127,7 +126,7 @@ else:
                     "v_frete": f"R$ {v_fr:.2f}",
                     "litros": v_lt,
                     "total_abast": f"R$ {total_abast:.2f}",
-                    "g_mot": str(g_mot).replace("\n", " | "),
+                    "g_mot": str(g_mot).replace("\n", " | "), # Transforma quebras de linha em barras para a planilha
                     "g_cam": str(g_cam).replace("\n", " | "),
                     "obs": str(obs).replace("\n", " | "),
                     "enviado": datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
@@ -139,6 +138,6 @@ else:
                         st.success("✅ Relatório enviado com sucesso!")
                         st.balloons()
                     else:
-                        st.error("Erro ao salvar os dados na planilha.")
+                        st.error("Erro ao salvar os dados. Verifique a ponte.")
                 except Exception as e:
                     st.error(f"Erro de conexão: {e}")
