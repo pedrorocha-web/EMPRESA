@@ -23,13 +23,13 @@ ID_MOTORISTA = "76565874204"
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except:
-    st.error("Erro nos Secrets. Verifique a ligação com a folha de cálculo.")
+    st.error("Erro nos Secrets. Verifique a conexão com a planilha.")
 
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Comprovativo de Viagem", ln=True, align='C')
+    pdf.cell(200, 10, txt="Relatorio de Viagem", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", size=10)
     for key, value in dados.items():
@@ -42,14 +42,14 @@ if 'logado' not in st.session_state:
 
 if not st.session_state.logado:
     st.title("🚚 Sistema de Logística")
-    user_input = st.text_input("Introduza o seu ID de Acesso", type="password")
-    if st.button("Entrar no Sistema"):
+    user_input = st.text_input("ID de Acesso", type="password")
+    if st.button("Entrar"):
         if user_input in [ID_DONO, ID_MOTORISTA]:
             st.session_state.logado = True
             st.session_state.user_id = user_input
             st.rerun()
         else:
-            st.error("ID não autorizado.")
+            st.error("ID Inválido.")
 else:
     if st.sidebar.button("Sair"):
         st.session_state.logado = False
@@ -65,75 +65,60 @@ else:
         try:
             df = conn.read(ttl=0)
             if df is not None and not df.empty:
-                st.write("### Registos Recebidos")
                 st.dataframe(df, use_container_width=True)
                 st.divider()
-                
-                c1, c2 = st.columns(2)
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df.to_excel(writer, index=False)
-                c1.download_button("📥 Baixar Excel", data=buffer.getvalue(), file_name="relatorio_logistica.xlsx")
-                
-                pdf_data = gerar_pdf(df.iloc[-1].to_dict())
-                c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="comprovativo.pdf")
+                st.download_button("📥 Baixar Excel", data=buffer.getvalue(), file_name="relatorio.xlsx")
             else:
-                st.info("Nenhum dado encontrado.")
-        except Exception as e:
-            st.error(f"Erro ao carregar dados: {e}")
+                st.info("Nenhum registro encontrado.")
+        except:
+            st.error("Erro ao carregar planilha.")
 
-    # --- TELA DO MOTORISTA ---
+    # --- TELA DO MOTORISTA (LISTA VERTICAL ANTI-ENVIO) ---
     else:
-        st.title("🚛 Registo de Viagem")
-        st.info("💡 Use 'Enter' para saltar de linha nos campos de texto. O envio só ocorre no botão final.")
+        st.title("🚛 Cadastro de Viagem")
+        st.info("💡 A tecla 'Enter' agora pula linha. O envio só acontece no botão final.")
         
         with st.form("form_viagem", clear_on_submit=True):
             data_v = st.date_input("📅 Data da Viagem", value=datetime.now(fuso_br))
-            cliente = st.text_input("👤 Nome do Cliente")
-            origem = st.text_input("📍 Cidade Origem")
-            destino = st.text_input("🏁 Cidade Destino")
             
-            distancia = st.number_input("📏 Distância Total (KM)", min_value=0, value=None, step=1)
+            # Usando text_area em vez de text_input para travar o "Enter"
+            cliente = st.text_area("👤 Nome do Cliente", height=65)
+            origem = st.text_area("📍 Cidade Origem", height=65)
+            destino = st.text_area("🏁 Cidade Destino", height=65)
+            
+            distancia = st.number_input("📏 Distância Total (KM)", min_value=0, value=None)
             v_frete = st.number_input("💰 Valor do Frete (R$)", min_value=0.0, value=None, format="%.2f")
             
             st.markdown("---")
-            st.subheader("⛽ Abastecimento")
+            st.subheader("⛽ Detalhes do Abastecimento")
             litros = st.number_input("Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
             v_litro = st.number_input("Preço por Litro (R$)", min_value=0.0, value=None, format="%.2f")
-            
-            # NOVO CAMPO: VALOR TOTAL DO ABASTECIMENTO
-            v_total_abast_manual = st.number_input("Valor Total Abastecimento (R$)", min_value=0.0, value=None, format="%.2f", help="Introduza o valor total pago no posto.")
+            v_abast_total = st.number_input("Valor Total Abastecimento (R$)", min_value=0.0, value=None, format="%.2f")
             
             st.markdown("---")
-            # CAMPOS TEXT_AREA (ENTER NÃO ENVIA)
-            g_mot = st.text_area("🍔 Gastos Motorista (Detalhado)", height=100, placeholder="Ex:\nAlmoço: 30.00\nJanta: 40.00")
-            g_cam = st.text_area("🛠️ Gastos Camião (Detalhado)", height=100, placeholder="Ex:\nReparação Pneu: 100.00")
-            obs = st.text_area("📝 Observações Gerais", height=100)
+            # Campos de gastos e observações (também em text_area)
+            g_mot = st.text_area("🍔 Gastos Motorista (Pode listar itens)", height=100)
+            g_cam = st.text_area("🛠️ Gastos Caminhão (Pode listar itens)", height=100)
+            obs = st.text_area("📝 Observações", height=100)
             
             st.markdown("---")
-            enviar = st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO")
-            
-            if enviar:
-                v_dist = distancia if distancia is not None else 0
-                v_fr = v_frete if v_frete is not None else 0.0
-                v_lt = litros if litros is not None else 0.0
-                v_vl = v_litro if v_litro is not None else 0.0
-                
-                # Prioriza o valor manual, se não houver, calcula automaticamente
-                if v_total_abast_manual and v_total_abast_manual > 0:
-                    total_final_abast = f"R$ {v_total_abast_manual:.2f}"
-                else:
-                    total_final_abast = f"R$ {v_lt * v_vl:.2f}"
+            if st.form_submit_button("🚀 ENVIAR RELATÓRIO DEFINITIVO"):
+                # Cálculo de segurança para o abastecimento (caso o total esteja zerado)
+                calc_abast = (litros if litros else 0) * (v_litro if v_litro else 0)
+                final_abast_val = v_abast_total if (v_abast_total and v_abast_total > 0) else calc_abast
                 
                 payload = {
                     "data_v": data_v.strftime("%d/%m/%Y"),
-                    "cliente": str(cliente),
-                    "origem": str(origem),
-                    "destino": str(destino),
-                    "distancia": v_dist,
-                    "v_frete": f"R$ {v_fr:.2f}",
-                    "litros": v_lt,
-                    "total_abast": total_final_abast,
+                    "cliente": str(cliente).strip().replace("\n", " "),
+                    "origem": str(origem).strip().replace("\n", " "),
+                    "destino": str(destino).strip().replace("\n", " "),
+                    "distancia": distancia if distancia else 0,
+                    "v_frete": f"R$ {v_frete if v_frete else 0:.2f}",
+                    "litros": litros if litros else 0,
+                    "total_abast": f"R$ {final_abast_val:.2f}",
                     "g_mot": str(g_mot).replace("\n", " | "),
                     "g_cam": str(g_cam).replace("\n", " | "),
                     "obs": str(obs).replace("\n", " | "),
@@ -146,6 +131,6 @@ else:
                         st.success("✅ Relatório enviado com sucesso!")
                         st.balloons()
                     else:
-                        st.error("Erro ao guardar dados.")
+                        st.error("Falha ao salvar. Verifique a conexão.")
                 except Exception as e:
-                    st.error(f"Erro de ligação: {e}")
+                    st.error(f"Erro de conexão: {e}")
