@@ -23,13 +23,13 @@ ID_MOTORISTA = "76565874204"
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
 except:
-    st.error("Erro nos Secrets. Verifique se o link da planilha está correto.")
+    st.error("Erro nos Secrets. Verifique a ligação com a folha de cálculo.")
 
 def gerar_pdf(dados):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Comprovante de Viagem", ln=True, align='C')
+    pdf.cell(200, 10, txt="Comprovativo de Viagem", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", size=10)
     for key, value in dados.items():
@@ -42,7 +42,7 @@ if 'logado' not in st.session_state:
 
 if not st.session_state.logado:
     st.title("🚚 Sistema de Logística")
-    user_input = st.text_input("Digite o seu ID de Acesso", type="password")
+    user_input = st.text_input("Introduza o seu ID de Acesso", type="password")
     if st.button("Entrar no Sistema"):
         if user_input in [ID_DONO, ID_MOTORISTA]:
             st.session_state.logado = True
@@ -51,7 +51,6 @@ if not st.session_state.logado:
         else:
             st.error("ID não autorizado.")
 else:
-    st.sidebar.write(f"Usuário: **{'Proprietário' if st.session_state.user_id == ID_DONO else 'Motorista'}**")
     if st.sidebar.button("Sair"):
         st.session_state.logado = False
         st.rerun()
@@ -59,14 +58,14 @@ else:
     # --- TELA DO DONO ---
     if st.session_state.user_id == ID_DONO:
         st.title("📊 Painel Administrativo")
-        if st.button("🔄 Atualizar Tabela"):
+        if st.button("🔄 Atualizar Dados"):
             st.cache_data.clear()
             st.rerun()
         
         try:
             df = conn.read(ttl=0)
             if df is not None and not df.empty:
-                st.write("### Registros Recebidos")
+                st.write("### Registos Recebidos")
                 st.dataframe(df, use_container_width=True)
                 st.divider()
                 
@@ -77,34 +76,38 @@ else:
                 c1.download_button("📥 Baixar Excel", data=buffer.getvalue(), file_name="relatorio_logistica.xlsx")
                 
                 pdf_data = gerar_pdf(df.iloc[-1].to_dict())
-                c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="comprovante.pdf")
+                c2.download_button("📄 Baixar Último PDF", data=pdf_data, file_name="comprovativo.pdf")
             else:
-                st.info("Nenhum dado encontrado na planilha.")
+                st.info("Nenhum dado encontrado.")
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
 
-    # --- TELA DO MOTORISTA (EVITANDO ENVIO PELO ENTER) ---
+    # --- TELA DO MOTORISTA ---
     else:
-        st.title("🚛 Cadastro de Viagem")
-        st.info("💡 Use 'Enter' para pular linha nos campos de texto. O envio só ocorre no botão final.")
+        st.title("🚛 Registo de Viagem")
+        st.info("💡 Use 'Enter' para saltar de linha nos campos de texto. O envio só ocorre no botão final.")
         
         with st.form("form_viagem", clear_on_submit=True):
             data_v = st.date_input("📅 Data da Viagem", value=datetime.now(fuso_br))
-            
-            # Campos de texto curto (Enter pula para o próximo campo)
             cliente = st.text_input("👤 Nome do Cliente")
             origem = st.text_input("📍 Cidade Origem")
             destino = st.text_input("🏁 Cidade Destino")
             
-            # Campos Numéricos
-            distancia = st.number_input("📏 Distância Total da Viagem (KM)", min_value=0, value=None, step=1)
+            distancia = st.number_input("📏 Distância Total (KM)", min_value=0, value=None, step=1)
             v_frete = st.number_input("💰 Valor do Frete (R$)", min_value=0.0, value=None, format="%.2f")
-            litros = st.number_input("⛽ Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
-            v_litro = st.number_input("💵 Preço por Litro (R$)", min_value=0.0, value=None, format="%.2f")
             
-            # --- CAMPOS TEXT_AREA (ENTER PULA LINHA E NÃO ENVIA) ---
-            g_mot = st.text_area("🍔 Gastos Motorista (Detalhado)", height=100, placeholder="Ex: \n- Almoço: 35,00\n- Janta: 40,00")
-            g_cam = st.text_area("🛠️ Gastos Caminhão (Detalhado)", height=100, placeholder="Ex: \n- Pneu furado: 120,00")
+            st.markdown("---")
+            st.subheader("⛽ Abastecimento")
+            litros = st.number_input("Quantidade de Litros", min_value=0.0, value=None, format="%.1f")
+            v_litro = st.number_input("Preço por Litro (R$)", min_value=0.0, value=None, format="%.2f")
+            
+            # NOVO CAMPO: VALOR TOTAL DO ABASTECIMENTO
+            v_total_abast_manual = st.number_input("Valor Total Abastecimento (R$)", min_value=0.0, value=None, format="%.2f", help="Introduza o valor total pago no posto.")
+            
+            st.markdown("---")
+            # CAMPOS TEXT_AREA (ENTER NÃO ENVIA)
+            g_mot = st.text_area("🍔 Gastos Motorista (Detalhado)", height=100, placeholder="Ex:\nAlmoço: 30.00\nJanta: 40.00")
+            g_cam = st.text_area("🛠️ Gastos Camião (Detalhado)", height=100, placeholder="Ex:\nReparação Pneu: 100.00")
             obs = st.text_area("📝 Observações Gerais", height=100)
             
             st.markdown("---")
@@ -115,7 +118,12 @@ else:
                 v_fr = v_frete if v_frete is not None else 0.0
                 v_lt = litros if litros is not None else 0.0
                 v_vl = v_litro if v_litro is not None else 0.0
-                total_abast = round(v_lt * v_vl, 2)
+                
+                # Prioriza o valor manual, se não houver, calcula automaticamente
+                if v_total_abast_manual and v_total_abast_manual > 0:
+                    total_final_abast = f"R$ {v_total_abast_manual:.2f}"
+                else:
+                    total_final_abast = f"R$ {v_lt * v_vl:.2f}"
                 
                 payload = {
                     "data_v": data_v.strftime("%d/%m/%Y"),
@@ -125,8 +133,8 @@ else:
                     "distancia": v_dist,
                     "v_frete": f"R$ {v_fr:.2f}",
                     "litros": v_lt,
-                    "total_abast": f"R$ {total_abast:.2f}",
-                    "g_mot": str(g_mot).replace("\n", " | "), # Transforma quebras de linha em barras para a planilha
+                    "total_abast": total_final_abast,
+                    "g_mot": str(g_mot).replace("\n", " | "),
                     "g_cam": str(g_cam).replace("\n", " | "),
                     "obs": str(obs).replace("\n", " | "),
                     "enviado": datetime.now(fuso_br).strftime("%d/%m/%Y %H:%M")
@@ -138,6 +146,6 @@ else:
                         st.success("✅ Relatório enviado com sucesso!")
                         st.balloons()
                     else:
-                        st.error("Erro ao salvar os dados. Verifique a ponte.")
+                        st.error("Erro ao guardar dados.")
                 except Exception as e:
-                    st.error(f"Erro de conexão: {e}")
+                    st.error(f"Erro de ligação: {e}")
